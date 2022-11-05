@@ -1,13 +1,8 @@
-import telegram
-
 import time
-
 import requests
-
 import os
-
 import logging
-
+import telegram
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -48,6 +43,7 @@ def send_message(bot, message):
     """
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
+        logger.info('Сообщение отправлено')
     except Exception as error:
         logger.info(f'Не удалось отправить сообщение: {error}')
 
@@ -67,13 +63,18 @@ def get_api_answer(current_timestamp):
             headers=HEADERS,
             params=params
         )
+
         if homework_status.status_code != 200:
             logger.error('Ошибка при запросе к API')
             raise Exception('Ошибка при запросе к API')
-        return homework_status.json()
-    except Exception as Error:
-        logger.error(f'Ошибка {Error} при запросе к API')
-        raise Exception(f'Ошибка{Error}')
+        try:
+            return homework_status.json()
+        except Exception as error:
+            logger.error(f'Ошибка {error} при запросе к API')
+
+    except Exception as error:
+        logger.error(f'Ошибка {error} при запросе к API')
+        raise Exception(f'Ошибка {error}')
 
 
 def check_response(response):
@@ -86,6 +87,10 @@ def check_response(response):
     доступный в ответе API по ключу 'homeworks'.
     """
     homework_list = response['homeworks']
+
+    if not homework_list:
+        logger.error('Список домашних работ пуст')
+
     if not isinstance(homework_list, list):
         logger.error('Ожидался список')
         raise TypeError()
@@ -104,6 +109,9 @@ def parse_status(homework):
     homework_name = homework['homework_name']
     homework_status = homework['status']
 
+    if not homework_name or not homework_status:
+        logger.error('Не найдено имя или статус работы')
+
     try:
         verdict = HOMEWORK_STATUSES[homework_status]
 
@@ -115,45 +123,39 @@ def parse_status(homework):
 
 def check_tokens():
     """Проверяет доступность переменных окружения, необходимых для работы."""
-    if not all([TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, PRACTICUM_TOKEN]):
-        logger.critical('Отсутствуют обязательные переменные окружения')
-        return False
-    else:
-        return True
+    return all([
+        TELEGRAM_TOKEN,
+        TELEGRAM_CHAT_ID,
+        PRACTICUM_TOKEN
+    ]) or logger.critical('Отсутствуют обязательные переменные окружения')
 
 
 def main():
     """Основная логика работы бота."""
-    bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    current_timestamp = int(time.time())
+    if check_tokens():
+        bot = telegram.Bot(token=TELEGRAM_TOKEN)
+        current_timestamp = int(time.time())
 
-    last_message = ''
+        last_message = ''
 
-    while True:
-        try:
-            response = get_api_answer(current_timestamp)
-            message = parse_status(check_response(response)[0])
+        while True:
+            try:
+                response = get_api_answer(current_timestamp)
+                message = parse_status(check_response(response)[0])
 
-            if message != last_message:
-                last_message = message
+                if message != last_message:
+                    last_message = message
+                    send_message(bot, message)
+
+            except Exception as error:
+                message = f'Сбой в работе программы: {error}'
+                logger.error(message)
                 send_message(bot, message)
-                logger.info('Сообщение отправлено')
 
             current_timestamp = int(time.time())
             time.sleep(RETRY_TIME)
-
-        except Exception as error:
-            message = f'Сбой в работе программы: {error}'
-            logger.error(message)
-            send_message(bot, message)
-            logger.info('Сообщение отправлено')
-            time.sleep(RETRY_TIME)
-        else:
-            message = 'Неизвестная ошибка'
-            logger.error(message)
-            send_message(bot, message)
-            logger.info('Сообщение отправлено')
-            time.sleep(RETRY_TIME)
+    else:
+        logger.critical('Отсутствуют обязательные переменные окружения')
 
 
 if __name__ == '__main__':
