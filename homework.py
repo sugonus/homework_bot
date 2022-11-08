@@ -86,10 +86,14 @@ def check_response(response):
     то функция должна вернуть список домашних работ,
     доступный в ответе API по ключу 'homeworks'.
     """
-    homework_list = response['homeworks']
+    if not isinstance(response, dict):
+        logger.error('Ожидался словарь')
+        raise TypeError()
 
-    if not homework_list:
-        logger.error('Список домашних работ пуст')
+    if 'homeworks' not in response.keys():
+        logger.error('Не найден ключ "homeworks"')
+
+    homework_list = response['homeworks']
 
     if not isinstance(homework_list, list):
         logger.error('Ожидался список')
@@ -106,10 +110,17 @@ def parse_status(homework):
     функция возвращает подготовленную для отправки в Telegram строку,
     содержащую один из вердиктов словаря HOMEWORK_STATUSES.
     """
+    if not isinstance(homework, dict):
+        logger.error('Ожидался словарь')
+        raise TypeError()
+
+    if 'homework_name' or 'status' not in homework.keys():
+        logger.error('Не найден ключи "homework_name" или/и "status"')
+
     homework_name = homework['homework_name']
     homework_status = homework['status']
 
-    if not homework_name or not homework_status:
+    if homework_name is None or homework_status is None:
         logger.error('Не найдено имя или статус работы')
 
     try:
